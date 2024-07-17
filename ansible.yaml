@@ -1,0 +1,102 @@
+- hosts: server
+  become: yes
+  gather_facts: True
+  tasks:
+    - name: Update the server
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name: "{{ item }}"
+        state: present
+      with_items:
+        - nginx
+        - nodejs
+        - npm
+
+    - name: Create application directory
+      file:
+        path: /var/www/html/simple-node-app
+        state: directory
+        mode: '0755'
+
+    - name: Copy Node.js app to server
+      copy:
+        src: /home/ubuntu/node_project/
+        dest: /var/www/html/simple-node-app/
+        mode: '0755'
+    
+
+    - name: Install Node.js dependencies
+      command: /usr/bin/npm install
+      args:
+        chdir: /var/www/html/simple-node-app
+      environment:
+        PATH: "/usr/bin:/usr/local/bin:{{ ansible_env.PATH }}"
+
+
+    - name: Remove files
+      file:
+        path: "{{item}}"
+        state: absent
+      with_items:
+        - /etc/nginx/sites-enabled/default
+        - /etc/nginx/sites-available/default
+
+
+    - name: Create Nginx configuration for Node.js app
+      copy:
+        dest: /etc/nginx/sites-available/default
+        content: |
+          server {
+              listen 80;
+              server_name domain.com;
+
+              location / {
+                  proxy_pass http://localhost:3000;
+                  proxy_http_version 1.1;
+                  proxy_set_header Upgrade $http_upgrade;
+                  proxy_set_header Connection 'upgrade';
+                  proxy_set_header Host $host;
+                  proxy_cache_bypass $http_upgrade;
+              }
+          }
+
+    - name: Enable Nginx configuration by creating symlink
+      file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+
+
+    - name: Create systemd service for Node.js app
+      copy:
+        content: |
+          [Unit]
+          Description=Simple Node.js App
+
+          [Service]
+          ExecStart=/usr/bin/node /var/www/html/simple-node-app/app.js
+          Restart=always
+          User=nobody
+          Group=nogroup
+          Environment=PATH=/usr/bin:/usr/local/bin
+          Environment=NODE_ENV=production
+          WorkingDirectory=/var/www/html/simple-node-app
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/simple-node-app.service
+
+    - name: Start and enable Node.js app service
+      systemd:
+        name: simple-node-app
+        enabled: yes
+        state: started
+
+
+    - name: Restart nginx service
+      systemd:
+        name: nginx
+        state: restarted
