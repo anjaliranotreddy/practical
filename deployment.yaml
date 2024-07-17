@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployment-practical
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-application
+  template:
+    metadata:
+      labels:
+        app: web-application
+    spec:
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        resources:
+          limits: 
+            memory: "500Mi"
+            cpu: "200m"
+          requests:
+            memory: "500Mi"
+            cpu: "200m"
+        command: ["sh", "-c", 'touch /tmp/health; sleep 30; rm -f /tmp/health; sleep 300']
+        livenessProbe:
+          exec:
+            command:
+            - cat
+            - /tmp/health
+          initialDelaySeconds: 5
+          periodSeconds: 5 
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+
